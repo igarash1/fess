@@ -18,12 +18,15 @@ package org.codelibs.fess.thumbnail.impl;
 import static org.codelibs.core.stream.StreamUtil.stream;
 
 import java.io.File;
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiPredicate;
 import java.util.function.Predicate;
+import java.util.regex.Pattern;
 
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.misc.Tuple3;
@@ -206,31 +209,45 @@ public abstract class BaseThumbnailGenerator implements ThumbnailGenerator {
 
                     final CrawlerClientFactory crawlerClientFactory =
                             config.initializeClientFactory(() -> ComponentUtil.getComponent(CrawlerClientFactory.class));
-                    final CrawlerClient client = crawlerClientFactory.getClient(url);
-                    if (client == null) {
-                        throw new ThumbnailGenerationException("No CrawlerClient: " + configId + ", url: " + url);
+                    logger.info("Created CrawlerClientFactory ");
+                    try {
+                        Field field = crawlerClientFactory.getClass().getDeclaredField("clientMap");
+                        field.setAccessible(true);
+                        Map<Pattern, CrawlerClient> clientMap = (HashMap<Pattern, CrawlerClient>) field.get(crawlerClientFactory);
+                        logger.info("clientMap = {}", clientMap);
+                    } catch (final Exception e) {
+                        logger.warn("faield to access clientMap! {}", e);
                     }
-                    String u = url;
-                    for (int i = 0; i < maxRedirectCount; i++) {
-                        try (final ResponseData responseData = client.execute(RequestDataBuilder.newRequestData().get().url(u).build())) {
-                            if (StringUtil.isNotBlank(responseData.getRedirectLocation())) {
-                                u = responseData.getRedirectLocation();
-                                continue;
-                            }
-                            if (StringUtil.isBlank(responseData.getUrl())) {
-                                throw new ThumbnailGenerationException("Failed to process a thumbnail content: " + url
-                                        + " (Response URL is empty)");
-                            }
-                            return consumer.test(responseData);
-                        } catch (final CrawlingAccessException e) {
-                            if (logger.isDebugEnabled()) {
-                                throw new ThumbnailGenerationException("Failed to process a thumbnail content: " + url, e);
-                            } else {
-                                throw new ThumbnailGenerationException(e.getMessage());
-                            }
-                        } catch (final Exception e) {
-                            throw new ThumbnailGenerationException("Failed to process a thumbnail content: " + url, e);
+                    try {
+                        final CrawlerClient client = crawlerClientFactory.getClient(url);
+                        if (client == null) {
+                            throw new ThumbnailGenerationException("No CrawlerClient: " + configId + ", url: " + url);
                         }
+                        logger.debug("CrawlerClient : {}", client.getClass());
+                        String u = url;
+                        for (int i = 0; i < maxRedirectCount; i++) {
+                            try (final ResponseData responseData = client.execute(RequestDataBuilder.newRequestData().get().url(u).build())) {
+                                if (StringUtil.isNotBlank(responseData.getRedirectLocation())) {
+                                    u = responseData.getRedirectLocation();
+                                    continue;
+                                }
+                                if (StringUtil.isBlank(responseData.getUrl())) {
+                                    throw new ThumbnailGenerationException("Failed to process a thumbnail content: " + url
+                                            + " (Response URL is empty)");
+                                }
+                                return consumer.test(responseData);
+                            } catch (final CrawlingAccessException e) {
+                                if (logger.isDebugEnabled()) {
+                                    throw new ThumbnailGenerationException("Failed to process a thumbnail content: " + url, e);
+                                } else {
+                                    throw new ThumbnailGenerationException(e.getMessage());
+                                }
+                            } catch (final Exception e) {
+                                throw new ThumbnailGenerationException("Failed to process a thumbnail content: " + url, e);
+                            }
+                        }
+                    } catch (final Exception e) {
+                        logger.warn("Failed to get the client.", e);
                     }
                     throw new ThumbnailGenerationException("Failed to process a thumbnail content: " + url + " (Redirect Loop)");
                 });
