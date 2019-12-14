@@ -73,7 +73,6 @@ public class AdminStorageAction extends FessAdminAction {
         if (form.uploadFile == null) {
             throwValidationError(messages -> messages.addErrorsStorageNoUploadFile(GLOBAL), () -> asListHtml(form.path));
         }
-        logger.debug("form.path = {}", form.path);
         verifyToken(() -> asListHtml(form.path));
         final String objectName = getObjectName(form.path, form.uploadFile.getFileName());
         try (final InputStream in = form.uploadFile.getInputStream()) {
@@ -126,13 +125,14 @@ public class AdminStorageAction extends FessAdminAction {
         if (StringUtil.isEmpty(values[1])) {
             throwValidationError(messages -> messages.addErrorsStorageFileNotFound(GLOBAL), () -> asListHtml(encodeId(values[0])));
         }
-        logger.debug("values[0] = {}, values[1] = {}", values[0], values[1]);
         final String objectName = getObjectName(values[0], values[1]);
         try {
             final MinioClient minioClient = createClient(fessConfig);
             minioClient.removeObject(fessConfig.getStorageBucket(), objectName);
         } catch (final Exception e) {
-            logger.debug("Failed to delete {}", values[1], e);
+            if (logger.isDebugEnabled()) {
+                logger.debug("Failed to delete {}", values[1], e);
+            }
             throwValidationError(messages -> messages.addErrorsFailedToDeleteFile(GLOBAL, e.getLocalizedMessage()),
                     () -> asListHtml(encodeId(values[0])));
         }
